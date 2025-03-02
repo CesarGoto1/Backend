@@ -112,6 +112,9 @@ def register():
     print("Usuario registrado correctamente")
     return jsonify({'success': True, 'message': 'Usuario registrado correctamente'}), 201
 
+@app.route("/")
+def home():
+    return "API funcionando correctamente"
 # =====================================================
 # Ruta para iniciar sesión
 # =====================================================
