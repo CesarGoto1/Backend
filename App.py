@@ -302,6 +302,14 @@ def get_results():
 
     with conn:
         with conn.cursor() as cursor:
+            # Obtener el email del usuario
+            cursor.execute('SELECT email FROM users WHERE id = %s', (user_id,))
+            user_email = cursor.fetchone()
+            if user_email:
+                user_email = user_email[0]
+            else:
+                user_email = None
+
             cursor.execute('''
                 SELECT id, user_id, session_date, avg_attention, avg_gaze_x, avg_gaze_y, raw_data 
                 FROM session_metrics 
@@ -363,6 +371,7 @@ def get_results():
     conn.close()
     return jsonify({
         'success': True,
+        'email': user_email,
         'sessionData': session_result,
         'referenceData': reference_result,
         'comparativeData': comparative_result
