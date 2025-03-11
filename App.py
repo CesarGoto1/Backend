@@ -112,9 +112,6 @@ def register():
     print("Usuario registrado correctamente")
     return jsonify({'success': True, 'message': 'Usuario registrado correctamente'}), 201
 
-@app.route("/")
-def home():
-    return "API funcionando correctamente"
 # =====================================================
 # Ruta para iniciar sesión
 # =====================================================
@@ -148,6 +145,7 @@ def login():
 # Ruta para guardar los datos de la sesión y realizar la comparación automática
 # =====================================================
 @app.route('/save_session_data', methods=['POST'])
+@app.route('/save_session_data', methods=['POST'])
 def save_session_data():
     data = request.get_json()
     user_id = data.get('user_id')
@@ -157,28 +155,21 @@ def save_session_data():
     try:
         # Cálculo de promedios para datos de Morphcast
         morphcast_data = data.get('session_data', {}).get('morphcast', [])
-        if (morphcast_data):
-            # Extraemos las atenciones de los datos de Morphcast
-            attention_values = []
-            for mcast in morphcast_data:
-                attention = mcast.get('data', {}).get('attention', {}).get('avg', 0)
-                attention_values.append(attention)
+        if morphcast_data:
+            attention_values = [mcast.get('data', {}).get('attention', {}).get('avg', 0) for mcast in morphcast_data]
             avg_attention = sum(attention_values) / len(attention_values) if attention_values else 0
         else:
             avg_attention = 0
 
         # Cálculo de promedios para datos de GazeRecorder
         gaze_data = data.get('session_data', {}).get('gazeRecorder', [])
-        if (gaze_data):
-            # Si ya tienes datos, los mantienes como están, pero si no, generas datos aleatorios
-            gaze_x_values = [random.uniform(0, 1) for _ in range(10)]  # 10 valores aleatorios entre 0 y 1 para x
-            gaze_y_values = [random.uniform(0, 1) for _ in range(10)]  # 10 valores aleatorios entre 0 y 1 para y
+        if gaze_data:
+            gaze_x_values = [gaze.get('data', {}).get('x', 0) for gaze in gaze_data]
+            gaze_y_values = [gaze.get('data', {}).get('y', 0) for gaze in gaze_data]
             avg_x = sum(gaze_x_values) / len(gaze_x_values) if gaze_x_values else 0
             avg_y = sum(gaze_y_values) / len(gaze_y_values) if gaze_y_values else 0
         else:
-            # Generar valores aleatorios si no tienes datos
-            avg_x = random.uniform(0, 1)
-            avg_y = random.uniform(0, 1)
+            avg_x = avg_y = 0
 
         conn = get_db_connection()
         if conn is None:
@@ -186,7 +177,6 @@ def save_session_data():
 
         with conn:
             with conn.cursor() as cursor:
-                # Crear tabla session_metrics (si no existe) con relación al usuario
                 cursor.execute(''' 
                     CREATE TABLE IF NOT EXISTS session_metrics (
                         id SERIAL PRIMARY KEY,
@@ -199,7 +189,6 @@ def save_session_data():
                     )
                 ''')
 
-                # Insertar los datos de la sesión
                 cursor.execute('''
                     INSERT INTO session_metrics 
                     (user_id, session_date, avg_attention, avg_gaze_x, avg_gaze_y, raw_data)
@@ -216,9 +205,6 @@ def save_session_data():
                 session_metric_id = cursor.fetchone()[0]
                 conn.commit()
 
-                # -------------------------------
-                # Comparación automática
-                # -------------------------------
                 cursor.execute('''
                     SELECT avg_attention, avg_gaze_x, avg_gaze_y FROM reference_metrics 
                     ORDER BY computed_date DESC LIMIT 1
@@ -227,8 +213,6 @@ def save_session_data():
 
                 if reference:
                     ref_avg_attention, ref_avg_gaze_x, ref_avg_gaze_y = reference
-
-                    # Calcular las diferencias entre la sesión del usuario y la referencia
                     diff_attention = round(avg_attention - ref_avg_attention, 2)
                     diff_gaze_x = round(avg_x - ref_avg_gaze_x, 2)
                     diff_gaze_y = round(avg_y - ref_avg_gaze_y, 2)
@@ -252,7 +236,6 @@ def save_session_data():
                         }
                     }
 
-                    # Guardar el resultado de la comparación
                     cursor.execute('''
                         INSERT INTO comparative_results 
                         (user_id, session_metric_id, diff_attention, diff_gaze_x, diff_gaze_y, comparison_date, raw_comparison)
@@ -319,7 +302,6 @@ def get_results():
 
     with conn:
         with conn.cursor() as cursor:
-            # Obtener el último registro de la sesión del usuario
             cursor.execute('''
                 SELECT id, user_id, session_date, avg_attention, avg_gaze_x, avg_gaze_y, raw_data 
                 FROM session_metrics 
@@ -340,7 +322,6 @@ def get_results():
             else:
                 session_result = None
 
-            # Obtener la métrica de referencia más reciente
             cursor.execute('''
                 SELECT id, avg_attention, avg_gaze_x, avg_gaze_y, computed_date 
                 FROM reference_metrics 
@@ -358,9 +339,8 @@ def get_results():
             else:
                 reference_result = None
 
-            # Obtener el último resultado comparativo asociado a la sesión
             comparative_result = None
-            if (session_result):
+            if session_result:
                 cursor.execute('''
                     SELECT id, user_id, session_metric_id, diff_attention, diff_gaze_x, diff_gaze_y, comparison_date, raw_comparison 
                     FROM comparative_results 
@@ -387,6 +367,25 @@ def get_results():
         'referenceData': reference_result,
         'comparativeData': comparative_result
     }), 200
+
+@app.route('/get_users', methods=['GET'])
+def get_users():
+    conn = get_db_connection()
+    if conn is None:
+        return jsonify({'success': False, 'message': 'Error en la conexión a la base de datos'}), 500
+
+    with conn:
+        with conn.cursor() as cursor:
+            cursor.execute('SELECT id, email FROM users')
+            users = cursor.fetchall()
+
+    conn.close()
+
+    if users:
+        user_list = [{'id': user[0], 'email': user[1]} for user in users]
+        return jsonify({'success': True, 'users': user_list}), 200
+    else:
+        return jsonify({'success': False, 'message': 'No se encontraron usuarios'}), 404
 
 # =====================================================
 # Inicio del servidor
